@@ -1,3 +1,4 @@
+#!/usr/bin/python
 """Provide the user with a programming problem from r/DailyProgrammer and a
 language in which the problem should be solved.
 """
@@ -6,18 +7,18 @@ from itertools import chain
 from random import choice
 from datetime import datetime
 
-from challenges import get_challenges
-from utils import JSONFileManager
+from dailyprogrammer.challenges import get_challenges
+from dailyprogrammer.utils import JSONFileManager
 
 
-def filter_repeats(challenges, log):
+def _filter_repeats(challenges, log):
     """Remove the challenges appearing in the challenge log to avoid repeating a challenge.
     """
     used_links = [entry['link'] for entry in log]
     return [(title, link) for title, link in challenges if link not in used_links]
 
 
-def get_valid_challenges(valid_difficulties):
+def _get_valid_challenges(valid_difficulties):
     """Retrieve and filter challenges by difficulty
 
     valid_difficulties - an iterable of strings representing acceptable difficulty levels
@@ -51,10 +52,10 @@ def do_challenge():
     elif args.difficulty == 'hard':
         valid_difficulties = ("easy", "intermediate", "hard", "extra")
 
-    valid_challenges = get_valid_challenges(valid_difficulties)
+    valid_challenges = _get_valid_challenges(valid_difficulties)
     challenge_log = JSONFileManager('.challenge_log.json', default=[])
     if no_repeat_challenges:
-        valid_challenges = filter_repeats(valid_challenges, challenge_log.obj)
+        valid_challenges = _filter_repeats(valid_challenges, challenge_log.obj)
 
     title, link = choice(valid_challenges)
     language = choice(languages)
