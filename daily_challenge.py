@@ -2,62 +2,41 @@
 language in which the problem should be solved.
 """
 import argparse
-import json
 from itertools import chain
 from random import choice
 from datetime import datetime
-import os
 
 from challenges import get_challenges
+from utils import JSONFileManager
 
 
-def load_config(fname="config.json"):
-    """Load a json config file.
-    """
-    with open(fname) as config_file:
-        return json.load(config_file)
-
-
-def load_challenge_log(fname='.past_challenges.json'):
-    """Load a json challenge log.
-    """
-    try:
-        os.stat(fname)
-    except OSError:
-        with open(fname, 'w') as log_file:
-            json.dump([], log_file, sort_keys=True, indent=4)
-    with open(fname) as log_file:
-        return json.load(log_file)
-
-
-def add_to_challenge_log(title, link, fname='.past_challenges.json'):
-    """Add an entry to the challenge log.
-    """
-    log = load_challenge_log()
-    log.append({
-        'title': title,
-        'link': link,
-        'time': datetime.now().isoformat()
-    })
-    with open(fname, 'w') as log_file:
-        json.dump(log, log_file, sort_keys=True, indent=4)
-
-
-def filter_repeats(challenges):
+def filter_repeats(challenges, log):
     """Remove the challenges appearing in the challenge log to avoid repeating a challenge.
     """
-    log = load_challenge_log()
     used_links = [entry['link'] for entry in log]
     return [(title, link) for title, link in challenges if link not in used_links]
+
+
+def get_valid_challenges(valid_difficulties):
+    """Retrieve and filter challenges by difficulty
+
+    valid_difficulties - an iterable of strings representing acceptable difficulty levels
+    """
+    challenges = get_challenges()
+    valid_challenge_items = (challenge_dict.items()
+                                for diff, challenge_dict in challenges.iteritems()
+                                if diff in valid_difficulties)
+    valid_challenges = list(chain.from_iterable(valid_challenge_items))
+    return valid_challenges
 
 
 def do_challenge():
     """Provide a random challenge from r/DailyProgrammer to the user along with
     a language in which the language should be completed.
     """
-    config = load_config("./config.json")
-    languages = config['languages']
-    no_repeat_challenges = config['no_repeat_challenge']
+    config = JSONFileManager('config.json')
+    languages = config.obj['languages']
+    no_repeat_challenges = config.obj['no_repeat_challenge']
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--difficulty', '-d',
@@ -71,19 +50,24 @@ def do_challenge():
         valid_difficulties = ("easy", "intermediate")
     elif args.difficulty == 'hard':
         valid_difficulties = ("easy", "intermediate", "hard", "extra")
-    challenges = get_challenges()
-    valid_challenge_items = (challenge_dict.items()
-                                for diff, challenge_dict in challenges.iteritems()
-                                if diff in valid_difficulties)
-    valid_challenges = list(chain.from_iterable(valid_challenge_items))
+
+    valid_challenges = get_valid_challenges(valid_difficulties)
+    challenge_log = JSONFileManager('.challenge_log.json', default=[])
     if no_repeat_challenges:
-        valid_challenges = filter_repeats(valid_challenges)
+        valid_challenges = filter_repeats(valid_challenges, challenge_log.obj)
 
     title, link = choice(valid_challenges)
     language = choice(languages)
     print ("  %s  " % title).center(120, '=')
     print "Using %s, complete the challenge found at:\n\t %s" % (language, link)
-    add_to_challenge_log(title, link)
+
+    # add to challenge log
+    challenge_log.obj.append({
+        'title': title,
+        'link': link,
+        'time': datetime.now().isoformat()
+    })
+    challenge_log.dump()
 
 
 if __name__ == "__main__":
