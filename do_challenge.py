@@ -34,7 +34,7 @@ def do_challenge():
     """Provide a random challenge from r/DailyProgrammer to the user along with
     a language in which the language should be completed.
     """
-    config = JSONFileManager('config.json')
+    config = JSONFileManager('config.json', create=False)
     languages = config.obj['languages']
     no_repeat_challenges = config.obj['no_repeat_challenge']
 
