@@ -1,4 +1,3 @@
-#!/usr/bin/python
 """Provide the user with a programming problem from r/DailyProgrammer and a
 language in which the problem should be solved.
 """

@@ -5,7 +5,7 @@ import json
 from bs4 import BeautifulSoup
 import requests
 
-from api import RedditAPIAdapter
+from dailyprogrammer.api import RedditAPIAdapter
 
 
 def _retrieve_challenge_page():
