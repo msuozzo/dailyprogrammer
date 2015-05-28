@@ -1,0 +1,6 @@
+[package]
+name = "n_common_words"
+version = "0.1.0"
+authors = ["Matthew Suozzo"]
+[[bin]]
+name = "n_common_words"
