@@ -4,12 +4,13 @@
 #include <math.h>
 
 
-typedef struct file_data {
+typedef struct string {
     char *data;
     size_t length;
-} file_data;
+} string;
 
-file_data *read_file(const char *fname, file_data *out_file) {
+
+string *read_file(const char *fname, string *out_file) {
     FILE *f = fopen(fname, "r");
     if (ferror(f)) {
         perror("Error opening file");
@@ -41,10 +42,12 @@ void print_n_bits(unsigned input, unsigned num_bits) {
 }
 
 
-unsigned z_order(unsigned row, unsigned col, unsigned dim) {
+unsigned z_order(unsigned ind, unsigned bits) {
+    unsigned row = ind / (1 << bits);
+    unsigned col = ind % (1 << bits);
     unsigned ret = 0;
     unsigned offset, op, bit;
-    for (int i = 2 * dim - 1; i >= 0; --i) {
+    for (int i = 2 * bits - 1; i >= 0; --i) {
         op = (i % 2) ? row : col;
         offset = i / 2;
         bit = ((op & (1 << offset)) >> offset);
@@ -54,58 +57,53 @@ unsigned z_order(unsigned row, unsigned col, unsigned dim) {
 }
 
 
+unsigned pad_length(string *to_pad) {
+    unsigned dim = 1, bits = 0;
+    while (to_pad->length > (dim * dim)) {
+        dim <<= 1;
+        bits++;
+    }
+    unsigned padded_length = dim * dim;
+
+    to_pad->data = realloc(to_pad->data, padded_length + 1);
+    memset(to_pad->data + to_pad->length, ' ', padded_length - to_pad->length);
+    to_pad->data[padded_length] = '\0';
+
+    to_pad->length = padded_length;
+    return bits;
+}
+
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "USAGE: %s {input_fname}\n", argv[0]);
         return 1;
     }
     // Read input
-    file_data input_file = {0, 0};
+    string input_file = {0, 0};
     if (!read_file(argv[1], &input_file)) {
         fprintf(stderr, "Failed to read file");
         return 1;
-    }
-    printf(input_file.data);
-    printf("\n%lu\n", input_file.length);
-    if (!input_file.length) {
+    } else if (!input_file.length) {
         fprintf(stderr, "No input provided.");
         return 1;
     }
-    unsigned dim = 1, bits = 1;
-    while (input_file.length > (dim * dim)) {
-        dim <<= 1;
-        bits++;
-    }
-    // Pad input
-    unsigned padded_length = dim * dim;
-    input_file.data = realloc(input_file.data, padded_length + 1);
-    memset(input_file.data + input_file.length, ' ', padded_length - input_file.length);
-    input_file.data[padded_length] = '\0';
-    input_file.length = padded_length;
+    // Pad the buffer
+    unsigned bits = pad_length(&input_file);
 
-    char *output = (char *) malloc(dim * dim);
+    // Create the output buffer
+    char *output = (char *) malloc(input_file.length);
 
+    // Populate the output buffer with the Z order indices
     for (int i = 0; i < input_file.length; ++i) {
-        unsigned z = z_order(i / dim, i % dim, bits);
+        unsigned z = z_order(i, bits);
         output[i] = input_file.data[z];
-        printf("%d, %d\t==>\t", i / dim, i % dim);
-        print_n_bits(z, 8);
-        printf("\n");
-
     }
-    printf("INPUT: %s\n", input_file.data);
-    printf("BOXED: \n");
+    output[input_file.length] = '\0';
+    // Print encrypted text
     for (int i = 0; i < input_file.length; ++i) {
-        printf("%c", input_file.data[i]);
-        if ((i + 1) % dim == 0) {
-            printf("\n");
-        }
-    }
-    printf("\n");
-    printf("ENCRYPTED: \n");
-    for (int i = 0; i < dim * dim; ++i) {
         printf("%c", output[i]);
-        if ((i + 1) % dim == 0) {
+        if ((i + 1) % (1 << bits) == 0) {
             printf("\n");
         }
     }
