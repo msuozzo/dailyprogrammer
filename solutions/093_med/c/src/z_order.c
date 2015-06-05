@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 
 
 typedef struct string {
@@ -10,28 +11,30 @@ typedef struct string {
 } string;
 
 
-string *read_file(const char *fname, string *out_file) {
+string *read_file(const char *fname, string *contents) {
     FILE *f = fopen(fname, "r");
-    if (ferror(f)) {
+    if (f == NULL || ferror(f)) {
         perror("Error opening file");
         return NULL;
     }
-    out_file->data = malloc(BUFSIZ);
     size_t capacity = BUFSIZ;
+    contents->data = realloc(NULL, capacity + 1);
+    contents->length = 0;
     unsigned bytes_read;
-    while ((bytes_read = fread(out_file->data + out_file->length, 1, BUFSIZ, f)) == BUFSIZ) {
-        out_file->length += bytes_read;
-        if (capacity < out_file->length) {
+    while ((bytes_read = fread(contents->data + contents->length, 1, BUFSIZ, f)) == BUFSIZ) {
+        contents->length += bytes_read;
+        if (capacity < contents->length) {
             capacity <<= 1;
-            out_file->data = realloc(out_file->data, capacity);
+            contents->data = realloc(contents->data, capacity + 1);
         }
     }
-    out_file->length += bytes_read;
+    contents->length += bytes_read;
+    contents->data[contents->length] = '\0';
     if (ferror(f)) {
         perror("Error reading file");
         return NULL;
     }
-    return out_file;
+    return contents;
 }
 
 
@@ -57,6 +60,19 @@ unsigned z_order(unsigned ind, unsigned bits) {
 }
 
 
+unsigned z_order_rev(unsigned ind, unsigned bits) {
+    unsigned ret = 0;
+    unsigned offset, base, bit;
+    for (int i = 0; i < 2 * bits; ++i) {
+        base = (i % 2) ? bits : 0;
+        offset = i / 2;
+        bit = ((ind & (1 << i)) >> i);
+        ret |= (bit << (base + offset));
+    }
+    return ret;
+}
+
+
 unsigned pad_length(string *to_pad) {
     unsigned dim = 1, bits = 0;
     while (to_pad->length > (dim * dim)) {
@@ -74,42 +90,88 @@ unsigned pad_length(string *to_pad) {
 }
 
 
+string *encrypt(string *plaintext, string *ciphertext) {
+    // Pad the buffer
+    unsigned bits = pad_length(plaintext);
+
+    // Create the ciphertext buffer
+    ciphertext->data = (char *) calloc(plaintext->length + 1, 1);
+    ciphertext->length = plaintext->length;
+
+    // Populate the ciphertext buffer with the Z order indices
+    for (int i = 0; i < plaintext->length; ++i) {
+        unsigned z = z_order(i, bits);
+        ciphertext->data[i] = plaintext->data[z];
+    }
+
+    return ciphertext;
+}
+
+
+string *decrypt(string *ciphertext, string *plaintext) {
+    // Determine the box dimensions
+    unsigned dim = (int) sqrt(ciphertext->length);
+    assert(dim * dim == ciphertext->length);
+    unsigned bits = 0;
+    while ((1 << ++bits) != dim) ;
+
+    // Create the plaintext buffer
+    plaintext->data = (char *) calloc(ciphertext->length, 1);
+    plaintext->length = ciphertext->length;
+
+    // Populate the ciphertext buffer with the Z order indices
+    for (int i = 0; i < plaintext->length; ++i) {
+        unsigned z = z_order_rev(i, bits);
+        plaintext->data[i] = ciphertext->data[z];
+    }
+
+    return plaintext;
+}
+
+
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        fprintf(stderr, "USAGE: %s {input_fname}\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "USAGE: %s -[e,d] {input_fname}\n\t-e  Encrypt file\n\t-d  Decrypt file\n"
+                        "\tinput_fname  File to read. NOTE: trailing newline character is enforced.\n", argv[0]);
         return 1;
     }
+    // Validate flag
+    if (strncmp(argv[1], "-e", 2) && strncmp(argv[1], "-d", 2)) {
+        fprintf(stderr, "Invalid flag provided: %s\n", argv[1]);
+        return 1;
+    }
+
     // Read input
-    string input_file = {0, 0};
-    if (!read_file(argv[1], &input_file)) {
-        fprintf(stderr, "Failed to read file");
+    string input_file = {NULL, 0};
+    if (!read_file(argv[2], &input_file)) {
+        fprintf(stderr, "Failed to read file: %s\n", argv[2]);
         return 1;
     } else if (!input_file.length) {
-        fprintf(stderr, "No input provided.");
+        fprintf(stderr, "No input provided.\n");
         return 1;
     }
-    // Pad the buffer
-    unsigned bits = pad_length(&input_file);
 
-    // Create the output buffer
-    char *output = (char *) malloc(input_file.length);
+    // Remove the trailing newline
+    assert(input_file.data[input_file.length - 1] == '\n');
+    input_file.data[input_file.length - 1] = '\0';
+    input_file.length -= 1;
 
-    // Populate the output buffer with the Z order indices
-    for (int i = 0; i < input_file.length; ++i) {
-        unsigned z = z_order(i, bits);
-        output[i] = input_file.data[z];
-    }
-    output[input_file.length] = '\0';
-    // Print encrypted text
-    for (int i = 0; i < input_file.length; ++i) {
-        printf("%c", output[i]);
-        if ((i + 1) % (1 << bits) == 0) {
-            printf("\n");
-        }
+    // Perform the operation (encryption or decryption)
+    string output = {NULL, 0};
+    if (!strncmp(argv[1], "-e", 2)) {
+        encrypt(&input_file, &output);
+    } else {
+        decrypt(&input_file, &output);
     }
 
-    free(output);
+    // Print the output
+    for (int i = 0; i < output.length; ++i) {
+        printf("%c", output.data[i]);
+    }
+    printf("\n");
+
+    free(output.data);
     free(input_file.data);
 
-    return 1;
+    return 0;
 }
