@@ -1,6 +1,6 @@
 
 CC=clang++
-FLAGS=-Wall -g
+FLAGS=-Wall -g -std=c++14
 
 SRCDIR=src
 OBJDIR=obj
