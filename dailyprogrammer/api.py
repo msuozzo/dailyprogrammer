@@ -2,6 +2,7 @@
 """
 import json
 from datetime import datetime, timedelta
+from time import sleep
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -74,28 +75,41 @@ class JSONCredentialManager(AbstractCredentialManager):
 class RedditAPIAdapter(object):
     """Manage the credentials and access token for the Reddit API
     """
-    def __init__(self, manager=None):
-        self.manager = JSONCredentialManager() if manager is None else manager
+    def __init__(self, manager_cls=JSONCredentialManager, request_retries=5):
+        self.manager = manager_cls()
+        self.request_retries = request_retries
 
     def _request_token(self):
         """Request an access token from the reddit API
+        If request fails, attempt to retry `self.request_retries` times
 
-        Token and expiration timestamp are set on success.
+        Token and expiration timestamp are set on (any) success.
 
         Exception is thrown on failure.
         """
+        # Build credential request params
         post_params = {'grant_type': 'client_credentials'}
+        headers = {'user-agent': 'osx:dailyprogramming:v0.1 (by /u/msuozzo)'}
         id_, secret = self.manager.get_api_creds()
         auth = HTTPBasicAuth(id_, secret)
         access_token_url = 'https://www.reddit.com/api/v1/access_token'
-        response = requests.post(access_token_url, auth=auth, params=post_params)
-        if response.status_code != 200:
-            raise Exception('Error occurred: %s' % response.json())
-        token_reponse = response.json()
-        # number of seconds the token will be valid for
-        lease_duration = token_reponse['expires_in']
+        # Attempt request `self.request_retries + 1` times
+        make_request = lambda: requests.post(access_token_url,
+                                                headers=headers, auth=auth, params=post_params)
+        response = make_request()
+        retries_left = self.request_retries
+        while response.status_code != 200 and retries_left:
+            response = make_request()
+            retries_left -= 1
+            sleep(1)
+        if self.request_retries and not retries_left:
+            raise Exception('Failed to acquire access token (%d attempts): %s' %
+                    (self.request_retries + 1, response.json()))
+        # Process successful response
+        token_response = response.json()
+        lease_duration = token_response['expires_in']  # in seconds
         expire_time = datetime.now() + timedelta(seconds=lease_duration)
-        self.manager.put_token(token_reponse['access_token'], expire_time)
+        self.manager.put_token(token_response['access_token'], expire_time)
 
     def get_token(self):
         """Retrieve a valid API token
